@@ -6,6 +6,10 @@ from django.shortcuts import HttpResponse,render,redirect
 
 from django.utils.safestring import mark_safe
 from django.urls import reverse
+from django.db.models import Q  # 与或非
+from django.db.models.fields.related import ForeignKey
+from django.db.models.fields.related import ManyToManyField
+import copy
 
 from stark.utils.page import Pagination
 class ShowList(object):
@@ -28,6 +32,70 @@ class ShowList(object):
         self.actions = self.config.new_actions() # [pathch_delete,patch_init,]
         # 构建数据[{'name':'path_init',"desc":'xxxxx'}]
 
+    # filter的tag如何生成的
+    def get_filter_linktags(self):
+        link_dic = {}
+        for filter_field in self.config.list_filter:        # ['title','publish','authors']
+            # 1.获取url中的相关字段，后面比较
+            current_id = self.request.GET.get(filter_field,0)
+            pararms = copy.deepcopy(self.request.GET)
+
+            # 2 页面生成  各种字段
+            filter_field_obj = self.config.model._meta.get_field(filter_field)
+            print(filter_field_obj,type(filter_field_obj))
+            # app01.Book.publish  < class 'django.db.models.fields.related.ForeignKey'>
+            # app01.Book.authors < class 'django.db.models.fields.related.ManyToManyField'>
+
+            # print('rel...',filter_field_obj.re)     # <ManyToOneRel: app01.book>
+            # print('rel...',filter_field_obj.re.to.objects.all())  # <QuerySet [<Publish: 南京出版社>, <Publish: 北京出版社>]>
+
+            # 解决步骤
+            # print('rel...',filter_field_obj.__dict__)
+            # print('rel...',filter_field_obj.remote_field)
+            # print('rel...',filter_field_obj.remote_field.__dict__)
+            # print("rel...", filter_field_obj.remote_field.model.objects.all())
+            # <QuerySet [<Publish: 南京出版社>, <Publish: 北京出版社>]>
+            # <QuerySet [<Author: jack>, <Author: tom>]>
+
+            # 一对一字段or一对多字段
+            if isinstance(filter_field_obj,ForeignKey) or isinstance(filter_field_obj,ManyToManyField):
+                data_list = filter_field_obj.remote_field.model.objects.all()
+            else:
+                # 普通字段
+                data_list = self.config.model.objects.all().values('pk',filter_field)
+
+            # 3、 生成标签的href
+            temp = []
+            if pararms.get(filter_field):
+                del pararms[filter_field]
+                temp.append("<a href='?%s'>全部</a>"%pararms.urlencode())
+            else:
+                temp.append("<a href='#' class='active'>全部</a>")
+
+            # 处理filter字段的href
+            for obj in data_list:
+                # print(data_list)
+                # 一对一，一对多字段
+                if isinstance(filter_field_obj, ForeignKey) or isinstance(filter_field_obj, ManyToManyField):
+                    pk = obj.pk
+                    text = str(obj)
+                    pararms[filter_field] = pk
+                else:
+                    # 普通字段
+                    pk = obj.get('pk')
+                    text = obj.get(filter_field)
+                    pararms[filter_field] = text
+
+                _url = pararms.urlencode()
+                # print(type(current_id),type(pk),type(text))
+                if str(current_id) == str(pk) or str(current_id) ==str(text):
+                    link_tag = "<a href='?%s' class='active'>%s</a>"%(_url,text)
+                else:
+                    link_tag = "<a href='?%s'>%s</a>"%(_url,text)
+                temp.append(link_tag)
+            link_dic[filter_field] = temp
+
+        return link_dic
 
     def get_action_list(self):
         """action批量初始化，构架数据"""
@@ -64,25 +132,33 @@ class ShowList(object):
             temp = []
             for field in self.config.new_list_play():     # ['name','age']
                 if callable(field):                 # edit()  可调用的
-                    print(obj,99999999999999999)
+                    # print(obj,99999999999999999)
                     val = field(self.config,obj)           # 直接调用edit()函数
-                    print('val--------->',val)
+                    # print('val--------->',val)
                 else:
-                    val = getattr(obj,field)       # 反射  obj是实例对象，name是方法
+                    field_obj = self.config.model._meta.get_field(field)
+                    if isinstance(field_obj,ManyToManyField):
+                        ret = getattr(obj,field).all()       # 反射  obj是实例对象，name是方法
+                        t = []
+                        for obj in ret:
+                            t.append(str(obj))
+                        val = ','.join(t)
 
-                    # list_display_links 按钮
-                    if field in self.config.list_display_links:
-                        model_name = self.config.model._meta.model_name
-                        app_label = self.config.model._meta.app_label
-                        _url = reverse("%s_%s_change" % (app_label, model_name), args=(obj.pk,))
-                        # print(_url)
-                        val = mark_safe("<a href='%s'>%s</a>"%(_url,field))
+                    else:
+                        val = getattr(obj, field)
+                        # list_display_links 按钮
+                        if field in self.config.list_display_links:
+                            model_name = self.config.model._meta.model_name
+                            app_label = self.config.model._meta.app_label
+                            _url = reverse("%s_%s_change" % (app_label, model_name), args=(obj.pk,))
+                            # print(_url)
+                            val = mark_safe("<a href='%s'>%s</a>"%(_url,val))
 
                 temp.append(val)
 
             new_data_list.append(temp)
 
-        print('new_data_list',new_data_list)        # 构造数据  [['jack', 44], ['mark', 33]]
+        # print('new_data_list',new_data_list)        # 构造数据  [['jack', 44], ['mark', 33]]
 
         return new_data_list
 
@@ -93,6 +169,8 @@ class ModelStark(object):
     modelform_class = []
     search_fields = []  # 模糊查询字段
     actions = []
+    list_filter = []        # 过滤字段
+
 
     # 批量删除
     def patch_delete(self,request,queryset):
@@ -125,7 +203,6 @@ class ModelStark(object):
             return mark_safe("<input id='choice' type='checkbox'>")
         return mark_safe("<input class='choice_item' type='checkbox' name='selected_pk' value='%s'>"%obj.pk)
 
-
     def edit(self,obj=None, header=False):
         if header:
             return "操作"
@@ -140,7 +217,6 @@ class ModelStark(object):
         _url = reverse("%s_%s_change"%(app_label,model_name),args=(obj.pk,))
         # print("_url",_url)
         return mark_safe("<a href='%s'>编辑</a>"%_url)
-
 
     def deletes(self,obj=None, header=False):
         if header:
@@ -196,7 +272,7 @@ class ModelStark(object):
         """search模糊查询"""
         key_word = request.GET.get("q",'')
         self.key_word = key_word
-        from django.db.models import Q   # 与或非
+
         search_connection = Q()
         if key_word:
             search_connection.connector = "or"
@@ -205,9 +281,19 @@ class ModelStark(object):
 
         return search_connection
 
+
+    def get_filter_condition(self,request):
+        """filter过滤处理"""
+        filter_condition = Q()      # 并且
+        for filter_field,val in request.GET.items():
+            if filter_field in self.list_filter:        # list_filter = ['publish','authors']
+                filter_condition.children.append((filter_field,val))
+        return filter_condition
+
+
     def list_view(self, request):
         if request.method == 'POST':
-            print('post',request.POST)
+            # print('post',request.POST)
             action = request.POST.get("action")                     # action': ['patch_init'],
             if action:
                 selected_pk = request.POST.getlist('selected_pk')       # 'selected_pk': ['5']}>
@@ -217,12 +303,15 @@ class ModelStark(object):
                 ret = action_func(request,queryset)    # 执行action()     # 执行实例方法()
                 # return ret
 
-
         # 获取search的Q对象
         search_connection = self.get_search_condition(request)
 
+        # 获取filter构建Q对象
+        filter_condition = self.get_filter_condition(request)
+
         # 筛选获取当前表所有数据
-        data_list = self.model.objects.all().filter(search_connection)
+        # data_list = self.model.objects.all().filter(search_connection)
+        data_list = self.model.objects.all().filter(search_connection).filter(filter_condition)
 
         #按照showlist展示页面， 构建表头，表单
         show_list = ShowList(self,data_list,request)  # self=ModelSTark实例对象
@@ -230,7 +319,6 @@ class ModelStark(object):
         # 构建一个查看addurl
         add_url = self.get_add_url()
         return render(request,'list_view.html', locals())
-
 
     def add_view(self, request):
         ModelFormDemo=self.get_modelform_class()
@@ -299,7 +387,7 @@ class StarkSite(object):
         """构造一层urls app01/book"""
         temp = []
         for model, stark_class_obj in self._registry.items():
-            print(model, 'stark_clas_obj', stark_class_obj)  # 不同的model模型表
+            # print(model, 'stark_clas_obj', stark_class_obj)  # 不同的model模型表
             """
              <class 'app01.models.UserInfo'> ----> <app01.starkadmin.UserConfig object at 0x00000072DDB65198>
              <class 'app01.models.Book'> ----> <stark.service.stark.ModelStark object at 0x00000072DDB65240>

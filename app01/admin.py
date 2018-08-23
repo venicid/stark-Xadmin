@@ -6,6 +6,7 @@ from .models import *
 class BookConfig(admin.ModelAdmin):
     list_display = ['title','price']
     search_fields = ['title', 'price']
+    list_filter = ['title','publish','authors']
 
     # 批量修改数据
     def patch_init(self,request,queryset):

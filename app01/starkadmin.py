@@ -19,10 +19,11 @@ class BookModelForm(ModelForm):
         }
 
 class BookConfig(stark.ModelStark):
-    list_display = ['nid', 'title', 'price']
+    list_display = ['title', 'price','publish','authors']
+    list_display_links = ['title']
     modelform_class = BookModelForm
     search_fields = ['title','price']
-
+    list_filter = ['title','publish','authors']  # 一对多，多对多字段
 
     # 批量修改数据
     def patch_init(self,request,queryset):
@@ -40,7 +41,7 @@ stark.site.register(Publish)
 stark.site.register(Author,AuthorConfig)
 stark.site.register(AuthorDetail)
 
-print(stark.site._registry)
+# print(stark.site._registry)
 
 """
 {<class 'app01.models.Book'>: <stark.service.stark.ModelStark object at 0x0000003AA7439630>,
