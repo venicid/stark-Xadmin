@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    <title>list页面</title>
+{% endblock %}
+
+{% block header %}
+    <h3>list页面</h3>
+{% endblock %}
+{% block content %}
+    <a class="btn btn-primary" href="{{ add_url }}">添加数据</a>
+
+    {% if show_list.config.search_fields %}
+        <form action="" method="get">
+            <input type="text" class="form-control" style="width: 30%;display: inline-block;margin-top: 8px" name="q" value="{{ show_list.config.key_word }}">
+            <button class="btn btn-success">submit</button>
+        </form>
+    {% endif %}
+
+
+    <form action="" method="post">
+        {% csrf_token %}
+        <select name="action" class="form-control" style="display: inline-block;width: 200px;margin: 8px 8px 8px 0;height: 35px;vertical-align: -2px">
+            <option value="">-------</option>
+            {% for item in show_list.get_action_list %}
+                <option value="{{ item.name }}">{{ item.desc }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">Go</button>
+
+
+        <table class="table table-bordered table-striped">
+            <tr>
+                {% for header in show_list.get_header %}
+                    {#            {% for header in header_list %}#}
+                    <th>{{ header }}</th>
+                {% endfor %}
+            </tr>
+
+            {% for data in show_list.get_body %}
+                {#        {% for data in new_data_list %}#}
+                <tr>
+                    {% for item in data %}
+                        <td>{{ item }}</td>
+                    {% endfor %}
+
+                </tr>
+            {% endfor %}
+        </table>
+    </form>
+
+    <nav>
+        <ul class="pagination">
+            {{ show_list.pagination.page_html|safe }}
+        </ul>
+    </nav>
+
+{% endblock %}
+
+
+{% block javascript %}
+    <script type="text/javascript">
+        $('#choice').click(function () {
+            if ($(this).prop('checked')) {   //对象自身属性中是否具有指定的属性
+                $('.choice_item').prop("checked", true)
+            } else {
+                $('.choice_item').prop("checked", false)
+            }
+        })
+    </script>
+{% endblock %}
+
+
