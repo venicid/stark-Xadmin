@@ -46,13 +46,11 @@
             <table class="table table-bordered table-striped">
                 <tr>
                     {% for header in show_list.get_header %}
-                        {#            {% for header in header_list %}#}
                         <th>{{ header }}</th>
                     {% endfor %}
                 </tr>
 
                 {% for data in show_list.get_body %}
-                    {#        {% for data in new_data_list %}#}
                     <tr>
                         {% for item in data %}
                             <td>{{ item }}</td>

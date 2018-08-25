@@ -19,3 +19,5 @@ class BookConfig(admin.ModelAdmin):
 
 admin.site.register(Book,BookConfig)
 admin.site.register(Author)
+admin.site.register(Publish)
+admin.site.register(AuthorDetail)

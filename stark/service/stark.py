@@ -130,29 +130,31 @@ class ShowList(object):
         new_data_list = []
         for obj in self.page_data:    #分页后的数据               # Book表模型，Author表模型
             temp = []
-            for field in self.config.new_list_play():     # ['name','age']
+            for field in self.config.new_list_play():     #  ["__str__"]  ['name','age']
                 if callable(field):                 # edit()  可调用的
-                    # print(obj,99999999999999999)
                     val = field(self.config,obj)           # 直接调用edit()函数
-                    # print('val--------->',val)
                 else:
-                    field_obj = self.config.model._meta.get_field(field)
-                    if isinstance(field_obj,ManyToManyField):
-                        ret = getattr(obj,field).all()       # 反射  obj是实例对象，name是方法
-                        t = []
-                        for obj in ret:
-                            t.append(str(obj))
-                        val = ','.join(t)
+                    try:
+                        field_obj = self.config.model._meta.get_field(field)
+                        if isinstance(field_obj,ManyToManyField):
+                            ret = getattr(obj,field).all()       # 反射  obj是实例对象，name是方法
+                            t = []
+                            for obj in ret:
+                                t.append(str(obj))
+                            val = ','.join(t)
 
-                    else:
-                        val = getattr(obj, field)
-                        # list_display_links 按钮
-                        if field in self.config.list_display_links:
-                            model_name = self.config.model._meta.model_name
-                            app_label = self.config.model._meta.app_label
-                            _url = reverse("%s_%s_change" % (app_label, model_name), args=(obj.pk,))
-                            # print(_url)
-                            val = mark_safe("<a href='%s'>%s</a>"%(_url,val))
+                        else:
+                            val = getattr(obj, field)
+                            # list_display_links 按钮
+                            if field in self.config.list_display_links:
+                                _url = self.config.get_change_url(self,obj)
+                                val = mark_safe("<a href='%s'>%s</a>"%(_url,val))
+
+                    # __str__ 的步骤
+                    except  Exception as e:
+                        val = getattr(obj,field)                #  <bound method Book.__str__ of <Book: php>
+                        _url = self.config.get_change_url(obj)   # /app01/book/3/change/
+                        val = mark_safe("<a href='%s'> %s </a>" % (_url, val()))
 
                 temp.append(val)
 
@@ -164,7 +166,7 @@ class ShowList(object):
 
 
 class ModelStark(object):
-    list_display = ["__str__"]  # 子类中没有，直接用父类自己的
+    list_display = ['__str__',]  # 子类中没有，直接用父类自己的
     list_display_links = []
     modelform_class = []
     search_fields = []  # 模糊查询字段
@@ -196,6 +198,11 @@ class ModelStark(object):
         _url = reverse("%s_%s_list" %(app_label,model_name))
         return _url
 
+    def get_change_url(self,obj):
+        model_name = self.model._meta.model_name
+        app_label = self.model._meta.app_label
+        _url = reverse("%s_%s_change" %(app_label,model_name),args=(obj.pk,))
+        return _url
 
     # 复选框，编辑，删除
     def checkbox(self,obj=None, header=False):
@@ -323,11 +330,41 @@ class ModelStark(object):
     def add_view(self, request):
         ModelFormDemo=self.get_modelform_class()
         form = ModelFormDemo()
+
+        # 打印form的每个字段
+        from django.forms.boundfield import BoundField
+        from django.forms.models import ModelChoiceField
+        from django.forms.models import ModelMultipleChoiceField
+
+        for bfield in form:
+            # print(type(bfield))  # <class 'django.forms.boundfield.BoundField'>
+            # print('field',bfield.field)   # <django.forms.models.ModelChoiceField object at 0x000000F2C0DEDC50>
+            # print('name',bfield.name)    # publish
+
+            if isinstance(bfield.field,ModelChoiceField):
+                bfield.is_pop = True
+                # print(bfield.field.queryset.model)     # 一对多或多对多字段的关联模型
+                # <class 'app01.models.Publish'>  <class 'app01.models.Author'>
+
+                # print(bfield.field.queryset.model._meta)  # app01.author
+                related_app_name = bfield.field.queryset.model._meta.app_label  # app01
+                related_model_name = bfield.field.queryset.model._meta.model_name # author
+
+                _url = reverse("%s_%s_add"%(related_app_name,related_model_name))
+                bfield.url = _url+"?pop_res_id=id_%s"%bfield.name
+
         if request.method == "POST":
             form = ModelFormDemo(request.POST)
             if form.is_valid():
-                form.save()
-                return redirect(self.get_list_url())
+                obj = form.save()
+
+                # window.open添加页面 要返回的数据
+                pop_res_id = request.GET.get('pop_res_id')
+                if pop_res_id:
+                    res = {"pk":obj.pk,'text':str(obj),'pop_res_id':pop_res_id}
+                    return render(request,'pop_view.html',locals())
+                else:
+                    return redirect(self.get_list_url())
 
         return render(request, "add_view.html",locals())
 
